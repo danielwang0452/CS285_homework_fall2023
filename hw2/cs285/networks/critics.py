@@ -6,7 +6,7 @@ from torch import optim
 import numpy as np
 import torch
 from torch import distributions
-
+device = 'cpu'
 from cs285.infrastructure import pytorch_util as ptu
 
 
@@ -36,16 +36,19 @@ class ValueCritic(nn.Module):
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         # TODO: implement the forward pass of the critic network
-        pass
-        
+        out = self.network(obs)
+        return out
 
     def update(self, obs: np.ndarray, q_values: np.ndarray) -> dict:
-        obs = ptu.from_numpy(obs)
-        q_values = ptu.from_numpy(q_values)
+        obs = ptu.from_numpy(obs).to(device)
+        q_values = ptu.from_numpy(q_values).to(device)
 
         # TODO: update the critic using the observations and q_values
-        loss = None
-
+        self.optimizer.zero_grad()
+        out = self.forward(obs)
+        loss = F.mse_loss(out, q_values)
+        loss.backward()
+        self.optimizer.step()
         return {
             "Baseline Loss": ptu.to_numpy(loss),
         }

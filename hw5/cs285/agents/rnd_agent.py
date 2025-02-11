@@ -7,21 +7,23 @@ from typing import Callable, List, Tuple
 from cs285.agents.dqn_agent import DQNAgent
 import cs285.infrastructure.pytorch_util as ptu
 
+
 def init_network(model):
     if isinstance(model, nn.Linear):
         model.weight.data.normal_()
         model.bias.data.normal_()
 
+
 class RNDAgent(DQNAgent):
     def __init__(
-        self,
-        observation_shape: Tuple[int, ...],
-        num_actions: int,
-        make_rnd_network: Callable[[Tuple[int, ...]], nn.Module],
-        make_rnd_network_optimizer: Callable[[nn.ParameterList], torch.optim.Optimizer],
-        make_target_rnd_network: Callable[[Tuple[int, ...]], nn.Module],
-        rnd_weight: float,
-        **kwargs
+            self,
+            observation_shape: Tuple[int, ...],
+            num_actions: int,
+            make_rnd_network: Callable[[Tuple[int, ...]], nn.Module],
+            make_rnd_network_optimizer: Callable[[nn.ParameterList], torch.optim.Optimizer],
+            make_target_rnd_network: Callable[[Tuple[int, ...]], nn.Module],
+            rnd_weight: float,
+            **kwargs
     ):
         super().__init__(
             observation_shape=observation_shape, num_actions=num_actions, **kwargs
@@ -46,29 +48,32 @@ class RNDAgent(DQNAgent):
         Update the RND network using the observations.
         """
         # TODO(student): update the RND network
-        loss = ...
-
+        with torch.enable_grad():
+            diff = nn.functional.mse_loss(self.rnd_net(obs), self.rnd_target_net(obs), reduction='none')
+            loss = diff.mean()
+        # loss shape (B)
         self.rnd_optimizer.zero_grad()
         loss.backward()
         self.rnd_optimizer.step()
 
-        return loss.item()
+        return loss.item()  # diff.mean(dim=1).detach()
 
     def update(
-        self,
-        observations: torch.Tensor,
-        actions: torch.Tensor,
-        rewards: torch.Tensor,
-        next_observations: torch.Tensor,
-        dones: torch.Tensor,
-        step: int,
+            self,
+            observations: torch.Tensor,
+            actions: torch.Tensor,
+            rewards: torch.Tensor,
+            next_observations: torch.Tensor,
+            dones: torch.Tensor,
+            step: int,
     ):
         with torch.no_grad():
             # TODO(student): Compute RND bonus for batch and modify rewards
-            rnd_error = ...
+            rnd_error = nn.functional.mse_loss(self.rnd_net(next_observations),
+                                               self.rnd_target_net(next_observations),
+                                               reduction='none').mean(dim=1)
             assert rnd_error.shape == rewards.shape
-            rewards = ...
-
+            rewards = rewards + self.rnd_weight * (rnd_error - rnd_error.mean()) / (rnd_error.std() + 1e-6)
         metrics = super().update(observations, actions, rewards, next_observations, dones, step)
 
         # Update the RND network.
@@ -79,10 +84,10 @@ class RNDAgent(DQNAgent):
 
     def num_aux_plots(self) -> int:
         return 1
-    
+
     def plot_aux(
-        self,
-        axes: List,
+            self,
+            axes: List,
     ) -> dict:
         """
         Plot the RND prediction error for the observations.

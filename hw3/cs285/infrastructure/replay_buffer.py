@@ -26,7 +26,6 @@ class ReplayBuffer:
 
     def insert(
         self,
-        /,
         observation: np.ndarray,
         action: np.ndarray,
         reward: np.ndarray,

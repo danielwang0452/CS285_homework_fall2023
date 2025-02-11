@@ -68,7 +68,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             action = env.action_space.sample()
         else:
             # TODO(student): Select an action
-            action = ...
+            action = agent.get_action(observation)
 
         # Step the environment and add the data to the replay buffer
         next_observation, reward, done, info = env.step(action)
@@ -90,8 +90,13 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         # Train the agent
         if step >= config["training_starts"]:
             # TODO(student): Sample a batch of config["batch_size"] transitions from the replay buffer
-            batch = ...
-            update_info = ...
+            batch = replay_buffer.sample(config['batch_size'])
+            update_info = agent.update(observations=torch.tensor(batch['observations'], dtype=torch.float32),
+                                        actions=torch.tensor(batch['actions'], dtype=torch.float32),
+                                        rewards=torch.tensor(batch['rewards'], dtype=torch.float32),
+                                        next_observations=torch.tensor(batch['next_observations'], dtype=torch.float32),
+                                        dones=torch.tensor(batch['dones'], dtype=torch.float32),
+                                        step=step )
 
             # Logging
             update_info["actor_lr"] = agent.actor_lr_scheduler.get_last_lr()[0]
@@ -124,7 +129,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
                 logger.log_scalar(np.std(ep_lens), "eval/ep_len_std", step)
                 logger.log_scalar(np.max(ep_lens), "eval/ep_len_max", step)
                 logger.log_scalar(np.min(ep_lens), "eval/ep_len_min", step)
-
+            print(f'eval_avg_return: {np.mean(returns)}')
             if args.num_render_trajectories > 0:
                 video_trajectories = utils.sample_n_trajectories(
                     render_env,

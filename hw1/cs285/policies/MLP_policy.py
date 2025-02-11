@@ -20,7 +20,6 @@ from torch import distributions
 from cs285.infrastructure import pytorch_util as ptu
 from cs285.policies.base_policy import BasePolicy
 
-
 def build_mlp(
         input_size: int,
         output_size: int,
@@ -101,7 +100,6 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         )
         self.mean_net.to(ptu.device)
         self.logstd = nn.Parameter(
-
             torch.zeros(self.ac_dim, dtype=torch.float32, device=ptu.device)
         )
         self.logstd.to(ptu.device)
@@ -129,7 +127,11 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
         # through it. For example, you can return a torch.FloatTensor. You can also
         # return more flexible objects, such as a
         # `torch.distributions.Distribution` object. It's up to you!
-        raise NotImplementedError
+        out = self.mean_net(observation)
+        eps_means = torch.zeros((observation.shape[0], self.ac_dim)).to('mps')
+        eps = torch.normal(mean=eps_means, std=torch.ones_like(eps_means))
+        #print(self.logstd.exp())
+        return out #+ eps*100*self.logstd.exp()
 
     def update(self, observations, actions):
         """
@@ -141,8 +143,16 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             dict: 'Training Loss': supervised learning loss
         """
         # TODO: update the policy and return the loss
-        loss = TODO
+        pred_action = self.forward(observations)
+        loss = F.mse_loss(pred_action, actions)
+
+        print(loss.item())
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        #print(pred_action.grad)
         return {
             # You can add extra logging information here, but keep this line
             'Training Loss': ptu.to_numpy(loss),
         }
+

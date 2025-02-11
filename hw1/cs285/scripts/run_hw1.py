@@ -20,7 +20,8 @@ from cs285.infrastructure.replay_buffer import ReplayBuffer
 from cs285.policies.MLP_policy import MLPPolicySL
 from cs285.policies.loaded_gaussian_policy import LoadedGaussianPolicy
 
-
+dtype = torch.float32
+device = 'mps'
 # how many rollouts to save as videos to tensorboard
 MAX_NVIDEO = 2
 MAX_VIDEO_LEN = 40  # we overwrite this in the code below
@@ -91,8 +92,7 @@ def run_training_loop(params):
         params['n_layers'],
         params['size'],
         learning_rate=params['learning_rate'],
-    )
-
+    ).to(device)
     # replay buffer
     replay_buffer = ReplayBuffer(params['max_replay_buffer_size'])
 
@@ -102,7 +102,7 @@ def run_training_loop(params):
 
     print('Loading expert policy from...', params['expert_policy_file'])
     expert_policy = LoadedGaussianPolicy(params['expert_policy_file'])
-    expert_policy.to(ptu.device)
+    expert_policy.to('mps')
     print('Done restoring expert policy...')
 
     #######################
@@ -112,7 +112,7 @@ def run_training_loop(params):
     # init vars at beginning of training
     total_envsteps = 0
     start_time = time.time()
-
+    params['n_iter'] = 5
     for itr in range(params['n_iter']):
         print("\n\n********** Iteration %i ************"%itr)
 
@@ -132,7 +132,8 @@ def run_training_loop(params):
             # TODO: collect `params['batch_size']` transitions
             # HINT: use utils.sample_trajectories
             # TODO: implement missing parts of utils.sample_trajectory
-            paths, envsteps_this_batch = TODO
+            paths, envsteps_this_batch =  utils.sample_trajectories(
+                env, actor, params['batch_size'], params['ep_len'])
 
             # relabel the collected obs with actions from a provided expert policy
             if params['do_dagger']:
@@ -140,8 +141,22 @@ def run_training_loop(params):
 
                 # TODO: relabel collected obsevations (from our policy) with labels from expert policy
                 # HINT: query the policy (using the get_action function) with paths[i]["observation"]
-                # and replace paths[i]["action"] with these expert labels
-                paths = TODO
+                # and replace
+                # paths[i]["action"] with these expert labels
+                #print(len(paths))
+                #print(paths[0])
+                obs = paths[0]['observation']
+                acs = paths[0]['action']
+                p = paths[0]['action']
+                expert_acs = expert_policy.forward(
+                    torch.tensor(obs, dtype=torch.float32).to(device)
+                ).cpu().detach().numpy()
+                #print(acs.shape)
+                #print(expert_acs.shape)
+                paths[0]['action'] = expert_acs
+                q = paths[0]['action']
+                #print(p-q)
+                #paths = TODO
 
         total_envsteps += envsteps_this_batch
         # add collected data to replay buffer
@@ -156,8 +171,13 @@ def run_training_loop(params):
           # HINT1: how much data = params['train_batch_size']
           # HINT2: use np.random.permutation to sample random indices
           # HINT3: return corresponding data points from each array (i.e., not different indices from each array)
-          # for imitation learning, we only need observations and actions.  
-          ob_batch, ac_batch = TODO
+          # for imitation learning, we only need observations and actions.
+          batch_size = params['train_batch_size'] # 100, note T=2000
+          T = replay_buffer.acs.shape[0]
+          indices = np.random.permutation(T)[:batch_size]
+          ob_batch, ac_batch = \
+              torch.tensor(replay_buffer.obs[indices], dtype=dtype).to(device), \
+              torch.tensor(replay_buffer.acs[indices], dtype=dtype).to(device)
 
           # use the sampled data to train an agent
           train_log = actor.update(ob_batch, ac_batch)

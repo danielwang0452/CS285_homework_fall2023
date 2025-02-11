@@ -86,26 +86,33 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
             replay_buffer.on_reset(observation=observation[-1, ...])
 
     reset_env_training()
-
+    #config["total_steps"] = 200000
     for step in tqdm.trange(config["total_steps"], dynamic_ncols=True):
         epsilon = exploration_schedule.value(step)
-        
+
         # TODO(student): Compute action
-        action = ...
+        action = agent.get_action(observation)
 
         # TODO(student): Step the environment
+        next_ob, rew, done, info = env.step(action)
+        next_observation = np.array(next_ob)
 
-        next_observation = np.asarray(next_observation)
         truncated = info.get("TimeLimit.truncated", False)
-
         # TODO(student): Add the data to the replay buffer
         if isinstance(replay_buffer, MemoryEfficientReplayBuffer):
             # We're using the memory-efficient replay buffer,
             # so we only insert next_observation (not observation)
-            ...
+            if truncated:
+                replay_buffer.insert(action, rew, next_observation[3], False)
+            else:
+                replay_buffer.insert(action, rew, next_observation[3], done)
         else:
             # We're using the regular replay buffer
-            ...
+            if truncated:
+                replay_buffer.insert(observation, action, rew, next_ob, False)
+            else:
+                replay_buffer.insert(observation, action, rew, next_ob, done)
+
 
         # Handle episode termination
         if done:
@@ -119,13 +126,18 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
         # Main DQN training loop
         if step >= config["learning_starts"]:
             # TODO(student): Sample config["batch_size"] samples from the replay buffer
-            batch = ...
+
+            batch = replay_buffer.sample(config["batch_size"])
 
             # Convert to PyTorch tensors
-            batch = ptu.from_numpy(batch)
-
+            batch = ptu.from_numpy(batch) # this is a dict
             # TODO(student): Train the agent. `batch` is a dictionary of numpy arrays,
-            update_info = ...
+            update_info = agent.update(batch['observations'],
+                                              batch['actions'],
+                                              batch['rewards'],
+                                              batch['next_observations'],
+                                              batch['dones'],
+                                              step)
 
             # Logging code
             update_info["epsilon"] = epsilon
@@ -136,7 +148,7 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
                     logger.log_scalar(v, k, step)
                 logger.flush()
 
-        if step % args.eval_interval == 0:
+        if step % 1000 == 0:#args.eval_interval == 0:
             # Evaluate
             trajectories = utils.sample_n_trajectories(
                 eval_env,
@@ -157,6 +169,13 @@ def run_training_loop(config: dict, logger: Logger, args: argparse.Namespace):
                 logger.log_scalar(np.std(ep_lens), "eval/ep_len_std", step)
                 logger.log_scalar(np.max(ep_lens), "eval/ep_len_max", step)
                 logger.log_scalar(np.min(ep_lens), "eval/ep_len_min", step)
+
+                #print(np.std(returns), "eval/return_std", step)
+                print(np.max(returns), "eval/return_max", step)
+                print(np.min(returns), "eval/return_min", step)
+                #print(np.std(ep_lens), "eval/ep_len_std", step)
+                #print(np.max(ep_lens), "eval/ep_len_max", step)
+                #print(np.min(ep_lens), "eval/ep_len_min", step)
 
             if args.num_render_trajectories > 0:
                 video_trajectories = utils.sample_n_trajectories(

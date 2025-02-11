@@ -26,7 +26,6 @@ class ReplayBuffer:
 
     def insert(
         self,
-        /,
         observation: np.ndarray,
         action: np.ndarray,
         reward: np.ndarray,
@@ -79,7 +78,6 @@ class ReplayBuffer:
 
     def batched_insert(
         self,
-        /,
         observations: np.ndarray,
         actions: np.ndarray,
         rewards: np.ndarray,
